@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { HORA_REGEX } from "./constants";
 
-/** Validación PHONE: formato "+573001234567" sin espacios. */
 const whatsappSchema = z
   .string()
   .min(7, "El número debe tener al menos 7 dígitos.")
@@ -10,10 +9,13 @@ const whatsappSchema = z
   .regex(/^\+?[0-9]{7,15}$/, "Ingresa un número válido, ej. 573001234567");
 
 export const crearReservaSchema = z.object({
-  slug: z.string().min(1, "Cancha requerida."),
+  venueId: z.string().uuid("Sede inválida."),
+  modalityCode: z.string().min(1, "Modalidad requerida."),
+  spaceSlug: z.string().optional().nullable(),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida."),
-  hora_inicio: z.string().regex(HORA_REGEX, "Hora inválida."),
-  nombre_cliente: z
+  horaInicio: z.string().regex(HORA_REGEX, "Hora inválida."),
+  duracionMin: z.coerce.number().int().min(30).max(480),
+  nombreCliente: z
     .string()
     .trim()
     .min(3, "Ingresa tu nombre completo (mínimo 3 caracteres).")
@@ -21,15 +23,12 @@ export const crearReservaSchema = z.object({
   whatsapp: whatsappSchema,
 });
 
-export const adjuntarComprobanteSchema = z.object({
-  codigo: z.string().min(8).max(8),
-  comprobante_url: z.string().url("El comprobante no es válido."),
-  referencia_pago: z
-    .string()
-    .trim()
-    .max(40, "La referencia es demasiado larga.")
-    .optional()
-    .or(z.literal("")),
+export const submitPaymentSchema = z.object({
+  codigo: z.string().min(6).max(6),
+  token: z.string().min(10, "Falta la clave de acceso."),
+  metodo: z.enum(["bank_transfer", "nequi", "daviplata", "cash", "other"]),
+  monto: z.coerce.number().int().min(1, "Ingresa el monto transferido."),
+  referencia: z.string().trim().max(40, "La referencia es demasiado larga.").optional().or(z.literal("")),
 });
 
 export const consultaSchema = z.object({
@@ -37,8 +36,9 @@ export const consultaSchema = z.object({
     .string()
     .trim()
     .toUpperCase()
-    .min(8, "El código tiene 8 caracteres.")
-    .max(8, "El código tiene 8 caracteres."),
+    .min(6, "El código tiene 6 caracteres.")
+    .max(6, "El código tiene 6 caracteres."),
+  token: z.string().trim().min(10, "Pega la clave de acceso completa del link que recibiste."),
 });
 
 export const loginSchema = z.object({
@@ -46,12 +46,6 @@ export const loginSchema = z.object({
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
 });
 
-export const reprogramarSchema = z.object({
-  codigo: z.string().min(8).max(8),
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida."),
-  hora_inicio: z.string().regex(HORA_REGEX, "Hora inválida."),
-});
-
 export type CrearReservaInput = z.infer<typeof crearReservaSchema>;
-export type AdjuntarComprobanteInput = z.infer<typeof adjuntarComprobanteSchema>;
+export type SubmitPaymentInput = z.infer<typeof submitPaymentSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

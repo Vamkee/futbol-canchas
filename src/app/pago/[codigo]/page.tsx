@@ -1,48 +1,55 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { formatCOP, formatFecha, formatHora } from "@/lib/utils";
-import { obtenerReservaPorCodigo } from "@/lib/servicio-reserva";
+import { formatCOP, formatFechaISO, formatRangoISO } from "@/lib/utils";
+import { obtenerReservaPorToken } from "@/lib/servicio-reserva";
 import { EstadoBadge } from "@/components/ui/estado-badge";
 
 import { PagoClient } from "./pago-client";
 
-export const metadata: Metadata = { title: "Pago por Nequi" };
+export const metadata: Metadata = { title: "Confirma tu pago" };
 export const dynamic = "force-dynamic";
 
-export default async function PagoPage({ params }: { params: Promise<{ codigo: string }> }) {
+export default async function PagoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ codigo: string }>;
+  searchParams: Promise<{ t?: string }>;
+}) {
   const { codigo } = await params;
-  const { reserva, cancha, error } = await obtenerReservaPorCodigo(codigo);
+  const { t } = await searchParams;
 
-  if (error || !reserva || !cancha) notFound();
+  if (!t) notFound();
+
+  const { booking, space, paymentAccounts, error } = await obtenerReservaPorToken(codigo, t);
+  if (error || !booking || !space) notFound();
 
   return (
     <section className="mx-auto max-w-xl">
-      <h1 className="text-2xl font-extrabold text-slate-900">Confirma tu anticipo por Nequi</h1>
+      <h1 className="text-2xl font-extrabold text-slate-900">Confirma tu anticipo</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Reserva <span className="font-mono font-semibold text-slate-900">{reserva.codigo}</span> ·{" "}
-        {cancha.nombre}
+        Reserva <span className="font-mono font-semibold text-slate-900">{booking.code}</span> · {space.name}
       </p>
 
       <div className="mt-4 flex items-center gap-2 text-sm text-slate-700">
-        <EstadoBadge estado={reserva.estado} />
+        <EstadoBadge estado={booking.status} />
         <span>
-          {formatFecha(reserva.fecha)} · {formatHora(reserva.hora_inicio)}
+          {formatFechaISO(booking.starts_at)} · {formatRangoISO(booking.starts_at, booking.ends_at)}
         </span>
       </div>
 
       <PagoClient
-        codigo={reserva.codigo}
-        nombreCliente={reserva.nombre_cliente}
-        whatsapp={reserva.whatsapp}
-        valorAnticipo={reserva.valor_anticipo}
-        numeroNequi={cancha.numero_nequi}
-        canchaNombre={cancha.nombre}
-        fecha={reserva.fecha}
-        horaInicio={reserva.hora_inicio}
-        referencia={reserva.referencia_pago}
-        tieneComprobante={Boolean(reserva.comprobante_url)}
-        expiraEn={reserva.expira_en}
+        codigo={booking.code}
+        token={t}
+        businessId={booking.business_id}
+        status={booking.status}
+        depositRequired={booking.deposit_required}
+        totalFormateado={formatCOP(booking.total)}
+        spaceName={space.name}
+        resumen={formatRangoISO(booking.starts_at, booking.ends_at)}
+        paymentAccounts={paymentAccounts}
+        holdExpiresAt={booking.hold_expires_at}
       />
     </section>
   );

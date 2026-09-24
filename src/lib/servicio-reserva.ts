@@ -1,44 +1,62 @@
-import type { Cancha, Reserva } from "@/types";
+import type { Booking, BookingRow, PaymentAccountInfo, Space } from "@/types";
 
+import { BUCKET_COMPROBANTES } from "./constants";
 import { createSupabaseServerClient } from "./supabase/server";
 
-export interface ReservaConCancha {
-  reserva: Reserva | null;
-  cancha: Cancha | null;
-  error: import("@supabase/supabase-js").PostgrestError | null;
+export interface ReservaConEspacio {
+  booking: Booking | null;
+  space: Space | null;
+  paymentAccounts: PaymentAccountInfo[];
+  error: string | null;
 }
 
 /**
- * Obtiene una reserva por su Código Único usando el RPC seguro
- * `obtener_reserva` (no hay acceso directo por RLS).
+ * Obtiene una reserva por su código y su clave de acceso (token largo) vía el
+ * RPC `get_booking_by_token`. El código corto nunca es suficiente por sí
+ * solo (AC1, RNF7): sin el token, el RPC responde E_NOTFOUND.
  */
-export async function obtenerReservaPorCodigo(codigo: string): Promise<ReservaConCancha> {
+export async function obtenerReservaPorToken(codigo: string, token: string): Promise<ReservaConEspacio> {
   const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase.rpc("obtener_reserva", { p_codigo: codigo });
-  if (error) return { reserva: null, cancha: null, error };
+  const { data, error } = await supabase.rpc("get_booking_by_token", {
+    p_code: codigo,
+    p_access_token: token,
+  });
 
-  const reserva = data as Reserva | null;
-  if (!reserva) return { reserva: null, cancha: null, error: null };
+  if (error || !data) {
+    return { booking: null, space: null, paymentAccounts: [], error: error?.message ?? "not found" };
+  }
 
-  const { data: cancha } = await supabase
-    .from("canchas")
-    .select("*")
-    .eq("id", reserva.cancha_id)
-    .maybeSingle();
-
-  return { reserva, cancha: (cancha as Cancha | null) ?? null, error: null };
+  const result = data as { booking: Booking; space: Space; payment_accounts: PaymentAccountInfo[] };
+  return { booking: result.booking, space: result.space, paymentAccounts: result.payment_accounts ?? [], error: null };
 }
 
-/** Lista de reservas con su cancha para el dashboard del administrador. */
+/** Lista de reservas enriquecidas para el panel del negocio. */
 export async function listarReservasAdmin() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from("reservas")
-    .select("*, cancha:canchas(id, nombre, slug)")
+    .from("bookings")
+    .select(
+      "*, space:spaces(id, name, slug), customer:customers(name, phone_e164), payments(id, booking_id, method, declared_amount, verified_amount, reference, status, submitted_at, rejection_reason, rejection_note, payment_proofs(id, payment_id, storage_path, sha256))"
+    )
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(300);
 
-  if (error) return { data: [] as Reserva[], error };
-  return { data: (data ?? []) as Reserva[], error: null };
+  if (error) return { data: [] as BookingRow[], error };
+
+  const rows = (data ?? []) as unknown as BookingRow[];
+
+  for (const row of rows) {
+    row.comprobante_signed_url = null;
+    row.payments.sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1));
+    const latestProof = row.payments.find((p) => p.payment_proofs?.length)?.payment_proofs?.[0];
+    if (latestProof) {
+      const { data: signed } = await supabase.storage
+        .from(BUCKET_COMPROBANTES)
+        .createSignedUrl(latestProof.storage_path, 3600);
+      row.comprobante_signed_url = signed?.signedUrl ?? null;
+    }
+  }
+
+  return { data: rows, error: null };
 }

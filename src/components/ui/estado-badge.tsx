@@ -1,8 +1,8 @@
 import { ESTADO_META } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type { ReservaEstado } from "@/types";
+import type { BookingStatus } from "@/types";
 
-export function EstadoBadge({ estado }: { estado: ReservaEstado }) {
+export function EstadoBadge({ estado }: { estado: BookingStatus }) {
   const meta = ESTADO_META[estado];
   return (
     <span

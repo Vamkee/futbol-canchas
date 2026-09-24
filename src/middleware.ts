@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Middleware: renueva la sesión de Supabase y protege /admin.
- * Las páginas de administración requieren sesión activa y además pertenencia
- * a la tabla `public.admins` (RNF-04).
+ * Las páginas de administración requieren sesión activa y además membresía
+ * en `public.business_members` (RNF-04, RNF11).
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

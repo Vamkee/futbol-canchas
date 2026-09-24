@@ -1,68 +1,63 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { formatCOP } from "@/lib/utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Cancha } from "@/types";
+import type { Space } from "@/types";
 
 import { HorariosClient } from "./horarios-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function CanchaPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+interface SpaceWithModality extends Space {
+  space_modalities: { modalities: { code: string; name: string } | null }[];
+}
+
+export default async function CanchaPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const supabase = await createSupabaseServerClient();
 
-  const { data: cancha, error } = await supabase
-    .from("canchas")
-    .select("*")
+  const { data: space, error } = await supabase
+    .from("spaces")
+    .select("*, space_modalities(modalities(code, name))")
     .eq("slug", slug)
+    .eq("active", true)
+    .eq("visible", true)
     .maybeSingle();
 
-  if (error || !cancha) notFound();
+  if (error || !space) notFound();
 
-  const canchaData = cancha as Cancha;
+  const spaceData = space as unknown as SpaceWithModality;
+  const modalidad = spaceData.space_modalities[0]?.modalities;
 
   return (
     <section>
       <Link href="/" className="text-sm text-brand-700 hover:underline">
-        ← Todas las canchas
+        ← Todos los espacios
       </Link>
 
-      <div className="mt-4 grid gap-8 md:grid-cols-[1fr_320px]">
+      <div className="mt-4 grid gap-8 md:grid-cols-[1fr_360px]">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">{canchaData.nombre}</h1>
-          {canchaData.direccion && (
-            <p className="mt-1 text-sm text-slate-500">📍 {canchaData.direccion}</p>
-          )}
-          {canchaData.descripcion && (
-            <p className="mt-3 text-slate-600">{canchaData.descripcion}</p>
-          )}
+          <h1 className="text-3xl font-extrabold text-slate-900">{spaceData.name}</h1>
+          {spaceData.description && <p className="mt-3 text-slate-600">{spaceData.description}</p>}
 
           <div className="mt-4 flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full bg-brand-50 px-3 py-1 font-semibold text-brand-700">
-              {formatCOP(canchaData.precio_por_hora)} / hora
-            </span>
-            <span className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700">
-              Anticipo Nequi: {formatCOP(canchaData.monto_anticipo)}
-            </span>
+            {modalidad && (
+              <span className="rounded-full bg-brand-50 px-3 py-1 font-semibold text-brand-700">
+                {modalidad.name}
+              </span>
+            )}
             <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-              Turnos de {canchaData.duracion_turno_min} min ·{" "}
-              {canchaData.horario_apertura.slice(0, 5)} a {canchaData.horario_cierre.slice(0, 5)}
+              Turnos de {spaceData.min_minutes} a {spaceData.max_minutes} min
             </span>
+            {spaceData.capacity && (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+                Hasta {spaceData.capacity} jugadores
+              </span>
+            )}
           </div>
         </div>
 
-        <HorariosClient
-          canchaId={canchaData.id}
-          slug={canchaData.slug}
-          precioHora={canchaData.precio_por_hora}
-          montoAnticipo={canchaData.monto_anticipo}
-        />
+        <HorariosClient slug={spaceData.slug} stepMinutes={spaceData.step_minutes} />
       </div>
     </section>
   );
