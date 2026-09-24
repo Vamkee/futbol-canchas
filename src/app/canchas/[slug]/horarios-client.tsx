@@ -4,19 +4,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { cn, esTurnoFuturo, formatCOP, formatHora, hoyLocal } from "@/lib/utils";
-import type { FranjaRow } from "@/types";
+import { cn, formatHoraISO, hoyLocal } from "@/lib/utils";
+import type { AvailabilitySlot } from "@/types";
 
 interface HorariosClientProps {
-  canchaId: number;
   slug: string;
-  precioHora: number;
-  montoAnticipo: number;
+  stepMinutes: number;
 }
 
-export function HorariosClient({ canchaId, slug, precioHora }: HorariosClientProps) {
+export function HorariosClient({ slug, stepMinutes }: HorariosClientProps) {
   const [fecha, setFecha] = useState(hoyLocal());
-  const [franjas, setFranjas] = useState<FranjaRow[]>([]);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,14 +26,14 @@ export function HorariosClient({ canchaId, slug, precioHora }: HorariosClientPro
     setError(null);
 
     supabase
-      .rpc("franjas_disponibles", { p_cancha_id: canchaId, p_fecha: fecha })
+      .rpc("space_availability", { p_space_slug: slug, p_date: fecha })
       .then(({ data, error: rpcError }) => {
         if (!activo) return;
         if (rpcError) {
           setError("No pudimos cargar la disponibilidad.");
-          setFranjas([]);
+          setSlots([]);
         } else {
-          setFranjas((data ?? []) as FranjaRow[]);
+          setSlots((data ?? []) as AvailabilitySlot[]);
         }
         setCargando(false);
       });
@@ -43,12 +41,13 @@ export function HorariosClient({ canchaId, slug, precioHora }: HorariosClientPro
     return () => {
       activo = false;
     };
-  }, [canchaId, fecha]);
+  }, [slug, fecha]);
 
   const min = hoyLocal();
   const max = new Date();
   max.setDate(max.getDate() + 30);
   const maxStr = max.toISOString().slice(0, 10);
+  const ahora = Date.now();
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -68,42 +67,44 @@ export function HorariosClient({ canchaId, slug, precioHora }: HorariosClientPro
           <p className="text-sm text-slate-500">Cargando turnos…</p>
         ) : error ? (
           <p className="text-sm text-red-600">{error}</p>
+        ) : slots.length === 0 ? (
+          <p className="text-sm text-slate-500">Este espacio no abre ese día.</p>
         ) : (
           <ul className="grid grid-cols-3 gap-2">
-            {franjas.map((f) => {
-              const libre = f.estado === "LIBRE";
-              const futuro = esTurnoFuturo(fecha, f.hora_inicio, Date.now());
+            {slots.map((s) => {
+              const libre = s.status === "free";
+              const futuro = new Date(s.starts_at).getTime() > ahora;
               const habilitada = libre && futuro;
+              const horaHHmm = new Date(s.starts_at).toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "America/Bogota",
+              });
 
               return (
-                <li key={f.hora_inicio}>
+                <li key={s.starts_at}>
                   {habilitada ? (
                     <Link
-                      href={`/reservar/${slug}?fecha=${fecha}&hora_inicio=${f.hora_inicio.slice(0, 5)}`}
+                      href={`/reservar/${slug}?fecha=${fecha}&hora=${horaHHmm}`}
                       className="block rounded-lg border border-brand-300 bg-brand-50 px-2 py-2 text-center text-sm font-semibold text-brand-800 transition hover:bg-brand-100"
                     >
-                      {formatHora(f.hora_inicio)}
-                      <span className="block text-xs font-normal text-brand-600">
-                        {formatCOP(precioHora)}
-                      </span>
+                      {formatHoraISO(s.starts_at)}
                     </Link>
                   ) : (
                     <button
                       type="button"
                       disabled
-                      aria-label={`Turno ${f.estado.toLowerCase()}`}
+                      aria-label={`Turno ${s.status}`}
                       className={cn(
                         "w-full cursor-not-allowed rounded-lg border px-2 py-2 text-center text-sm",
-                        f.estado === "BLOQUEADA"
-                          ? "border-slate-200 bg-slate-100 text-slate-400"
-                          : f.estado === "OCUPADA"
-                            ? "border-slate-200 bg-slate-100 text-slate-400"
-                            : "border-dashed border-slate-200 bg-slate-50 text-slate-300"
+                        s.status === "closed"
+                          ? "border-dashed border-slate-200 bg-slate-50 text-slate-300"
+                          : "border-slate-200 bg-slate-100 text-slate-400"
                       )}
                     >
-                      {formatHora(f.hora_inicio)}
+                      {formatHoraISO(s.starts_at)}
                       <span className="block text-xs">
-                        {f.estado === "BLOQUEADA" ? "Bloqueada" : f.estado === "OCUPADA" ? "Ocupada" : "Pasado"}
+                        {!futuro ? "Pasado" : s.status === "occupied" ? "Ocupada" : "Cerrado"}
                       </span>
                     </button>
                   )}
@@ -115,7 +116,7 @@ export function HorariosClient({ canchaId, slug, precioHora }: HorariosClientPro
       </div>
 
       <p className="mt-4 text-xs text-slate-500">
-        Al reservar se bloquea el turno por 15 minutos mientras confirmas el anticipo por Nequi.
+        Cada casilla dura {stepMinutes} min. Al reservar eliges la duración completa.
       </p>
     </div>
   );

@@ -47,3 +47,9 @@ yarn-error.log*
 # Supabase local
 supabase/.branches
 supabase/.temp/
+
+.claude/
+docs/
+CLAUDE.md
+
+

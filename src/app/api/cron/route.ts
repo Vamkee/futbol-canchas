@@ -5,8 +5,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 /**
- * Cron (RN-01): libera automáticamente las reservas cuya franja de 15 minutos
- * expiró sin comprobante cargado.
+ * Cron (sección 17): expira HOLD/pending_approval vencidos (L1) y cierra
+ * reservas confirmadas cuyo horario ya terminó (L4). Ambos procesos son
+ * idempotentes: correr esto dos veces no causa daño.
  *
  * Seguridad:
  * - Si CRON_SECRET está definido, exige `Authorization: Bearer <secret>`.
@@ -25,13 +26,17 @@ async function handler(request: NextRequest) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.rpc("liberar_reservas_expiradas");
-  if (error) {
-    console.error("cron liberar_reservas_expiradas:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const [expirations, closures] = await Promise.all([
+    supabase.rpc("run_expirations"),
+    supabase.rpc("run_closures"),
+  ]);
+
+  if (expirations.error || closures.error) {
+    console.error("cron:", expirations.error?.message, closures.error?.message);
+    return NextResponse.json({ error: expirations.error?.message ?? closures.error?.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, expired: expirations.data, closed: closures.data });
 }
 
 export async function GET(request: NextRequest) {

@@ -9,11 +9,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: `${SITE_NAME} · Reserva tu cancha y paga por Nequi`,
+    default: `${SITE_NAME} · Reserva tu cancha en línea`,
     template: `%s · ${SITE_NAME}`,
   },
   description:
-    "Reserva canchas deportivas en línea, bloquea tu turno y confirma tu anticipo por Nequi.",
+    "Reserva canchas deportivas en línea, bloquea tu turno y confirma tu anticipo por transferencia.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
